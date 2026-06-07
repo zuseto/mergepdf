@@ -1,0 +1,931 @@
+<!--
+  PDF MERGER TOOL WIDGET (Versi Blogspot - Seragam dengan PDF Editor)
+  Fitur: Multi-upload, Drag & Drop reorder, Tombol Pindah (mobile), Touch drag, Rotasi, Hapus, Google Ads.
+  Gaya & nuansa warna diselaraskan penuh dengan editorpdf.html (tema Emerald, CSS murni + Font Awesome).
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gabungkan PDF: Susun, Putar, Gabung</title>
+<!-- Font Inter sesuai standar -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Font Awesome (JS) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/js/all.min.js"></script>
+<!-- Library PDF-LIB untuk modifikasi PDF -->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<!-- Library PDF.js untuk rendering preview -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
+<!-- Google AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8899747271545681" crossorigin="anonymous"></script>
+
+<div id="pdf-merger-app-container">
+    <style>
+        /* --- TEMA HIJAU (EMERALD) — selaras dengan PDF Editor --- */
+        #pdf-merger-app-container {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #374151;
+            line-height: 1.5;
+            margin: 20px auto;
+            max-width: 100%;
+            width: 100%;
+            padding: 0 15px;
+            position: relative;
+            box-sizing: border-box;
+        }
+        #pdf-merger-app-container .pdf-tool-container { width: 100%; text-align: center; box-sizing: border-box; }
+
+        /* Header */
+        #pdf-merger-app-container h1 { color: #065f46; margin: 0 0 8px; font-size: clamp(24px, 5vw, 30px); font-weight: 700; }
+        #pdf-merger-app-container .tool-description { font-size: clamp(14px, 3vw, 16px); color: #059669; margin: 0 auto 25px; max-width: 700px; line-height: 1.5; font-weight: 500; }
+
+        /* Animasi loading + efek tap (tidak bisa inline) */
+        @keyframes mergerSpin { to { transform: rotate(360deg); } }
+        @keyframes mergerPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+        /* Putaran penuh + sedikit memantul saat tombol rotate diklik */
+        @keyframes mergerRotatePress {
+            0%   { transform: rotate(0deg) scale(0.82); }
+            60%  { transform: rotate(300deg) scale(1.12); }
+            100% { transform: rotate(360deg) scale(1); }
+        }
+        /* Animasi masuk thumbnail — fade + slide up bertahap */
+        @keyframes thumbnailEnter {
+            from { opacity: 0; transform: translateY(24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Class helper untuk animasi masuk */
+        #pdf-merger-app-container .page-thumbnail-item.entering {
+            animation: thumbnailEnter 0.4s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+        }
+
+        /* Drop Area */
+        #pdf-merger-app-container .pdf-drop-area {
+            border: 2px dashed #6ee7b7;
+            min-height: 140px;
+            padding: clamp(40px, 8vw, 80px) 40px;
+            cursor: pointer;
+            border-radius: 16px;
+            background-color: #ecfdf5;
+            transition: 0.3s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #pdf-merger-app-container .pdf-drop-area:hover { background-color: #d1fae5; }
+        #pdf-merger-app-container .pdf-drop-area.is-dragover { background-color: #d1fae5; border-color: #059669; }
+        #pdf-merger-app-container .pdf-drop-area p { margin: 0; font-size: clamp(15px, 3vw, 17px); color: #047857; font-weight: 600; }
+        #pdf-merger-app-container #pdfInput { display: none; }
+
+        /* Indikator Loading (spinner) */
+        #pdf-merger-app-container #mergerLoading {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 18px;
+            background: #ffffff;
+            border: 1px solid #d1fae5;
+            border-radius: 10px;
+            padding: 14px;
+        }
+        #pdf-merger-app-container #mergerLoading .merger-spinner {
+            display: inline-block; width: 22px; height: 22px;
+            border: 3px solid #d1fae5; border-top-color: #059669;
+            border-radius: 50%; animation: mergerSpin 0.8s linear infinite;
+        }
+        #pdf-merger-app-container #mergerLoadingText {
+            color: #065f46; font-size: 14px; font-weight: 600;
+            animation: mergerPulse 1.5s ease-in-out infinite;
+        }
+
+        /* Info & Status */
+        #pdf-merger-app-container #fileInfo {
+            text-align: left;
+            margin-top: 20px;
+            padding: 15px;
+            background: #d1fae5;
+            border-radius: 10px;
+            word-break: break-all;
+            border: 1px solid #a7f3d0;
+            width: 100%;
+            box-sizing: border-box;
+            font-weight: 500;
+            color: #065f46;
+        }
+        #pdf-merger-app-container #status, #pdf-merger-app-container #error { margin-top: 15px; font-size: 14px; min-height: 1.2em; font-weight: 600; }
+        #pdf-merger-app-container #status { color: #047857; }
+        #pdf-merger-app-container #error { color: #dc3545; font-weight: 700; }
+
+        /* Judul sub-bagian */
+        #pdf-merger-app-container #controls h2 { color: #065f46; font-size: 18px; font-weight: 700; margin: 22px 0 0; }
+
+        /* Toolbar kontrol file (Tambah / Hapus Semua) */
+        #pdf-merger-app-container .file-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 16px;
+        }
+
+        /* Area Thumbnails (grid seperti editorpdf) */
+        #pdf-merger-app-container #page-thumbnails-container {
+            display: grid;
+            gap: 14px;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            margin-top: 18px;
+            min-height: 100px;
+        }
+
+        #pdf-merger-app-container .page-thumbnail-item {
+            position: relative;
+            cursor: grab;
+            padding: 10px;
+            background: #f0fdf4;
+            border: 1px solid #a7f3d0;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+            transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            user-select: none;
+        }
+
+        #pdf-merger-app-container .page-thumbnail-item:hover {
+            box-shadow: 0 0 0 2px #6ee7b7, 0 4px 10px rgba(0,0,0,0.12);
+            transform: translateY(-2px);
+            border-color: #059669;
+        }
+
+        /* Item yang sedang diseret (desktop) */
+        #pdf-merger-app-container .page-thumbnail-item.is-dragging {
+            opacity: 0.5;
+            border: 2px dashed #047857;
+            transform: scale(1.05);
+        }
+
+        /* Header kartu: nomor urut + nama file */
+        #pdf-merger-app-container .thumb-head {
+            align-items: center;
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #pdf-merger-app-container .doc-number {
+            align-items: center;
+            background: #059669;
+            border-radius: 999px;
+            color: #fff;
+            display: inline-flex;
+            flex-shrink: 0;
+            font-size: 11px;
+            font-weight: 700;
+            height: 20px;
+            justify-content: center;
+            width: 20px;
+        }
+        #pdf-merger-app-container .file-name {
+            color: #065f46;
+            flex: 1 1 auto;
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 0;
+            overflow: hidden;
+            text-align: left;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Wadah canvas: tinggi tetap + preview selalu di tengah */
+        #pdf-merger-app-container .thumb-canvas-wrap {
+            align-items: center;
+            background: #fff;
+            border: 1px solid #d1fae5;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            overflow: hidden;
+            width: 100%;
+            height: clamp(150px, 42vw, 200px);
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        #pdf-merger-app-container .thumb-canvas-wrap canvas {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+        }
+
+        /* Footer thumbnail: label + tombol aksi */
+        #pdf-merger-app-container .thumb-foot {
+            align-items: center;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: space-between;
+            margin-top: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #pdf-merger-app-container .thumb-actions { display: flex; gap: 6px; margin-left: auto; }
+        #pdf-merger-app-container .page-label { font-size: 13px; font-weight: 700; color: #065f46; }
+
+        #pdf-merger-app-container .control-btn {
+            align-items: center;
+            background: #fff;
+            border: 1px solid #6ee7b7;
+            cursor: pointer;
+            display: inline-flex;
+            justify-content: center;
+            padding: 6px 9px;
+            border-radius: 7px;
+            transition: background-color 0.15s, transform 0.1s, box-shadow 0.15s;
+            font-size: 13px;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        #pdf-merger-app-container .control-btn:active:not(:disabled) { transform: scale(0.82); }
+
+        #pdf-merger-app-container .control-btn.rotate-btn { color: #047857; }
+        #pdf-merger-app-container .control-btn.rotate-btn:hover { background-color: #ecfdf5; }
+        #pdf-merger-app-container .control-btn.rotate-btn:active:not(:disabled) { background-color: #d1fae5; box-shadow: 0 0 0 3px #a7f3d0; }
+        /* Saat diklik: berputar penuh + memantul */
+        #pdf-merger-app-container .control-btn.rotate-btn.spinning { animation: mergerRotatePress 0.5s cubic-bezier(0.34, 1.25, 0.4, 1); }
+
+        #pdf-merger-app-container .control-btn.delete-btn { color: #dc3545; border-color: #fca5a5; }
+        #pdf-merger-app-container .control-btn.delete-btn:hover { background-color: #fef2f2; }
+
+        /* Tombol pindah (mobile-friendly) */
+        #pdf-merger-app-container .control-btn.move-btn { color: #3b82f6; border-color: #bfdbfe; }
+        #pdf-merger-app-container .control-btn.move-btn:hover { background-color: #eff6ff; }
+        #pdf-merger-app-container .control-btn.move-btn:active:not(:disabled) { background-color: #dbeafe; box-shadow: 0 0 0 3px #93c5fd; }
+        #pdf-merger-app-container .control-btn.move-btn:disabled { color: #9ca3af; border-color: #e5e7eb; cursor: not-allowed; opacity: 0.5; }
+
+        /* State sentuh (mobile drag) */
+        #pdf-merger-app-container .page-thumbnail-item.is-touch-dragging {
+            opacity: 0.55;
+            border: 2px dashed #047857;
+            transform: scale(1.05);
+        }
+        #pdf-merger-app-container .page-thumbnail-item.touch-drop-target {
+            box-shadow: 0 0 0 3px #3b82f6, 0 4px 12px rgba(0,0,0,0.15);
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+
+        /* Kartu "Tambah File" di akhir grid */
+        #pdf-merger-app-container .add-more-box {
+            align-items: center;
+            background: #ecfdf5;
+            border: 2px dashed #6ee7b7;
+            border-radius: 10px;
+            color: #047857;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            font-size: 14px;
+            font-weight: 600;
+            gap: 8px;
+            justify-content: center;
+            min-height: clamp(200px, 50vw, 260px);
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        #pdf-merger-app-container .add-more-box:hover { background: #d1fae5; border-color: #059669; }
+        #pdf-merger-app-container .add-more-box i { font-size: 22px; }
+
+        /* Tombol Aksi Utama */
+        #pdf-merger-app-container .action-buttons { margin-top: 25px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+
+        #pdf-merger-app-container .btn {
+            padding: 11px 22px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
+            transition: background-color 0.2s, transform 0.12s;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+            text-decoration: none;
+        }
+        #pdf-merger-app-container .btn:active:not(:disabled) { transform: scale(0.93); }
+
+        #pdf-merger-app-container .btn-primary { background-color: #059669; color: #fff; }
+        #pdf-merger-app-container .btn-primary:hover:not(:disabled) { background-color: #047857; }
+
+        #pdf-merger-app-container .btn-secondary { background-color: #10b981; color: #fff; }
+        #pdf-merger-app-container .btn-secondary:hover:not(:disabled) { background-color: #059669; }
+
+        #pdf-merger-app-container .btn-danger { background-color: #dc3545; color: #fff; }
+        #pdf-merger-app-container .btn-danger:hover:not(:disabled) { background-color: #c82333; }
+
+        #pdf-merger-app-container .btn-restore { background-color: #fff; color: #047857; border: 1px solid #6ee7b7; }
+        #pdf-merger-app-container .btn-restore:hover:not(:disabled) { background-color: #ecfdf5; }
+
+        #pdf-merger-app-container .btn:disabled { background-color: #9ca3af; color: #fff; cursor: not-allowed; }
+
+        #pdf-merger-app-container .hidden { display: none !important; }
+
+        /* Responsif */
+        @media (max-width: 600px) {
+            #pdf-merger-app-container { padding: 0 10px; }
+            #pdf-merger-app-container .pdf-drop-area { padding: 50px 20px; border-radius: 12px; }
+            #pdf-merger-app-container .action-buttons { flex-direction: column; align-items: stretch; gap: 10px; }
+            #pdf-merger-app-container #page-thumbnails-container { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+            #pdf-merger-app-container .thumb-canvas-wrap { height: clamp(140px, 40vw, 180px); }
+        }
+        @media (max-width: 380px) {
+            #pdf-merger-app-container #page-thumbnails-container { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+
+    <!-- Toast Notification -->
+    <div id="mergerToast" style="background-color: #065f46; border-radius: 8px; bottom: 30px; box-shadow: rgba(0, 0, 0, 0.2) 0px 4px 12px; color: white; font-size: 14px; left: 50%; min-width: 200px; opacity: 0; padding: 12px; position: fixed; text-align: center; transform: translateX(-50%); transition: opacity 0.3s, visibility 0.3s; visibility: hidden; z-index: 9999;">
+        Berhasil!
+    </div>
+
+    <div class="pdf-tool-container">
+        <h1><i class="fas fa-object-group"></i> Gabungkan File PDF</h1>
+        <p class="tool-description">Unggah beberapa file PDF, atur urutannya, putar bila perlu, lalu gabungkan menjadi satu dokumen. Semua proses dilakukan secara lokal di browser Anda.</p>
+
+        <!-- AREA IKLAN ATAS (Google AdSense Responsive) -->
+        <div style="margin: 0 auto 24px; text-align: center; width: 100%;">
+            <ins class="adsbygoogle"
+                 style="display:block"
+                 data-ad-client="ca-pub-8899747271545681"
+                 data-ad-slot="4762972827"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
+            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+        </div>
+
+        <div class="pdf-drop-area" id="pdfDropArea">
+            <p><i class="fas fa-upload"></i> Seret &amp; jatuhkan file PDF atau klik untuk memilih</p>
+        </div>
+        <input type="file" id="pdfInput" accept="application/pdf" multiple>
+
+        <!-- Indikator Loading -->
+        <div id="mergerLoading">
+            <span class="merger-spinner"></span>
+            <span id="mergerLoadingText">Memproses...</span>
+        </div>
+
+        <div id="fileInfo" class="hidden"></div>
+
+        <div id="controls" class="hidden">
+            <h2>Susun Urutan File (Seret &amp; Lepas)</h2>
+            <div class="file-toolbar">
+                <button class="control-btn" id="addMoreBtn" style="color:#047857;"><i class="fas fa-plus"></i> Pilih File Lagi</button>
+                <button class="control-btn delete-btn" id="clearAllBtn"><i class="fas fa-trash-alt"></i> Hapus Semua</button>
+            </div>
+            <div id="page-thumbnails-container">
+                <!-- Thumbnail file akan di-render di sini -->
+            </div>
+        </div>
+
+        <div class="action-buttons">
+            <button class="btn btn-primary hidden" id="mergeBtn" disabled>
+                <i class="fas fa-object-group"></i> Gabungkan PDF
+            </button>
+            <a class="btn btn-secondary hidden" id="downloadBtn" download="hasil-gabungan.pdf">
+                <i class="fas fa-download"></i> Unduh PDF Gabungan
+            </a>
+            <button class="btn btn-restore hidden" id="restoreBtn">
+                <i class="fas fa-rotate-left"></i> Susun Lagi
+            </button>
+            <button class="btn btn-danger hidden" id="resetBtn">
+                <i class="fas fa-times-circle"></i> Batalkan &amp; Reset
+            </button>
+        </div>
+
+        <p id="status"></p>
+        <p id="error"></p>
+
+        <!-- INSTRUCTIONS SECTION -->
+        <div style="background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb; margin-top: 30px; padding: 20px; text-align: left; width: 100%; box-sizing: border-box;">
+            <h4 style="color: #065f46; font-size: 15px; font-weight: 700; margin-top: 0; margin-bottom: 12px; border-bottom: 2px solid #ecfdf5; padding-bottom: 8px;">Cara Penggunaan:</h4>
+            <ul style="color: #4b5563; font-size: 13px; margin: 0; padding-left: 20px; line-height: 1.6;">
+                <li>Klik atau seret beberapa file <b>PDF</b> ke kotak di atas.</li>
+                <li>Atur urutan file dengan <b>menyeret</b> pratinjau (desktop), atau gunakan tombol <b>↑ ↓</b> dan <b>sentuh-tahan-seret</b> di perangkat mobile/tablet.</li>
+                <li>Klik ikon <b>putar</b> untuk memutar file 90°, atau ikon <b>hapus</b> untuk membuang file dari daftar.</li>
+                <li>Setelah urutan benar, klik <b>Gabungkan PDF</b> untuk memproses dokumen.</li>
+                <li>Tombol <b>Unduh PDF Gabungan</b> akan muncul setelah dokumen selesai diproses.</li>
+                <li>Gunakan tombol <b>Batalkan &amp; Reset</b> untuk menggabungkan PDF lainnya.</li>
+            </ul>
+        </div>
+
+        <!-- AREA IKLAN BAWAH (Google AdSense Responsive) -->
+        <div style="margin-top: 20px; text-align: center; width: 100%;">
+            <ins class="adsbygoogle" style="display:block; text-align:center;" data-ad-layout="in-article" data-ad-format="fluid" data-ad-client="ca-pub-8899747271545681" data-ad-slot="4762972827"></ins>
+            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+        </div>
+
+        <!-- FOOTER -->
+        <div style="margin-top: 25px; text-align: center; border-top: 1px solid #e5e7eb; padding-top: 15px; width: 100%; box-sizing: border-box;">
+            <p style="color: #6b7280; font-size: 11px; margin: 0;">* Semua proses berjalan di perangkat Anda (di dalam browser). File PDF tidak diunggah ke server mana pun, jadi tetap privat &amp; aman.</p>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        if (window.pdfMergerInitialized) return;
+        window.pdfMergerInitialized = true;
+
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.worker.min.js';
+        }
+        const { PDFDocument, degrees } = PDFLib;
+
+        const container = document.getElementById('pdf-merger-app-container');
+        const fileInput = container.querySelector('#pdfInput');
+        const pdfDropArea = container.querySelector('#pdfDropArea');
+        const fileInfo = container.querySelector('#fileInfo');
+        const controls = container.querySelector('#controls');
+        const addMoreBtn = container.querySelector('#addMoreBtn');
+        const clearAllBtn = container.querySelector('#clearAllBtn');
+        const mergeBtn = container.querySelector('#mergeBtn');
+        const downloadBtn = container.querySelector('#downloadBtn');
+        const restoreBtn = container.querySelector('#restoreBtn');
+        const resetBtn = container.querySelector('#resetBtn');
+        const statusEl = container.querySelector('#status');
+        const errorEl = container.querySelector('#error');
+        const thumbnailsContainer = container.querySelector('#page-thumbnails-container');
+        const loadingBox = container.querySelector('#mergerLoading');
+        const loadingText = container.querySelector('#mergerLoadingText');
+        const toastEl = container.querySelector('#mergerToast');
+
+        // Setiap elemen: { file: File, rotation: number, pageProxy: PDFPageProxy|null }
+        let selectedFiles = [];
+        let mergedUrl = null;
+
+        // State drag desktop
+        let dragSrcEl = null;
+        // State touch drag (mobile)
+        let touchDragItem = null;
+        let touchStartTarget = null;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchHasMoved = false;
+        let touchDropTarget = null;
+        let suppressNextClick = false;
+
+        // --- Event Listeners UI Utama ---
+        pdfDropArea.addEventListener('click', () => fileInput.click());
+        addMoreBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => { handleFiles(e.target.files); e.target.value = ''; });
+
+        pdfDropArea.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; pdfDropArea.classList.add('is-dragover'); });
+        pdfDropArea.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); pdfDropArea.classList.remove('is-dragover'); });
+        pdfDropArea.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); pdfDropArea.classList.remove('is-dragover'); if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files); });
+
+        clearAllBtn.addEventListener('click', clearAllFiles);
+        mergeBtn.addEventListener('click', mergePDFs);
+        resetBtn.addEventListener('click', () => resetTool(true));
+        restoreBtn.addEventListener('click', () => {
+            // Kembali dari tampilan sukses ke tampilan susun ulang
+            if (mergedUrl) { URL.revokeObjectURL(mergedUrl); mergedUrl = null; }
+            showUIForProcessing();
+            renderThumbnails();
+            showToast('Silakan susun ulang file Anda.');
+        });
+
+        // --- Drag and Drop Listeners (dipasang sekali di kontainer) ---
+        thumbnailsContainer.addEventListener('dragstart', handleDragStart);
+        thumbnailsContainer.addEventListener('dragover', handleDragOver);
+        thumbnailsContainer.addEventListener('drop', handleDrop);
+        thumbnailsContainer.addEventListener('dragend', handleDragEnd);
+
+        // --- Touch Listeners (Mobile) ---
+        thumbnailsContainer.addEventListener('touchstart', handleTouchStart, { passive: false });
+        thumbnailsContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
+        thumbnailsContainer.addEventListener('touchend', handleTouchEnd);
+        thumbnailsContainer.addEventListener('touchcancel', handleTouchCancel);
+
+        // --- Kontrol Thumbnail (Rotate / Delete / Move) ---
+        function runControlAction(targetEl, item) {
+            const index = Array.from(thumbnailsContainer.querySelectorAll('.page-thumbnail-item')).indexOf(item);
+            if (index < 0) return;
+
+            if (targetEl.closest('.move-up-btn')) {
+                if (index > 0) movePage(index, index - 1);
+            } else if (targetEl.closest('.move-down-btn')) {
+                if (index < selectedFiles.length - 1) movePage(index, index + 1);
+            } else if (targetEl.closest('.delete-btn')) {
+                deleteFile(index);
+            } else if (targetEl.closest('.rotate-btn')) {
+                rotateFile(index, item);
+            }
+        }
+
+        thumbnailsContainer.addEventListener('click', (e) => {
+            // Abaikan ghost-click yang menyusul tap sentuh (sudah ditangani di touchend)
+            if (suppressNextClick) { suppressNextClick = false; return; }
+            const item = e.target.closest('.page-thumbnail-item');
+            if (!item) return;
+            runControlAction(e.target, item);
+        });
+
+        // --- Core Functions ---
+        async function handleFiles(fileList) {
+            const all = Array.from(fileList);
+            const pdfs = all.filter(f => f.type === 'application/pdf');
+            const rejected = all.length - pdfs.length;
+
+            if (pdfs.length === 0) {
+                if (rejected > 0) { showError('Mohon unggah file PDF yang valid.'); showToast('Hanya file PDF yang didukung!'); }
+                return;
+            }
+
+            showError('');
+            showLoading('Membaca file PDF...');
+
+            for (const file of pdfs) {
+                let pageProxy = null;
+                try {
+                    const bytes = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+                    pageProxy = await pdf.getPage(1);
+                } catch (err) {
+                    console.error('Gagal memuat pratinjau:', err);
+                }
+                selectedFiles.push({ file, rotation: 0, pageProxy });
+            }
+
+            hideLoading();
+            showUIForProcessing();
+            await renderThumbnails();
+
+            if (rejected > 0) showToast('Beberapa file dilewati karena bukan PDF.');
+            else showToast(`${pdfs.length} file PDF ditambahkan.`);
+        }
+
+        function clearAllFiles() {
+            selectedFiles = [];
+            resetTool(true);
+            showToast('Semua file dihapus.');
+        }
+
+        function updateFileInfo() {
+            fileInfo.innerHTML = `<strong>Total File:</strong> ${selectedFiles.length} dokumen PDF siap digabungkan.`;
+        }
+
+        function updateMergeButton() {
+            mergeBtn.disabled = selectedFiles.length < 2;
+        }
+
+        function updateLabels() {
+            const items = thumbnailsContainer.querySelectorAll('.page-thumbnail-item');
+            items.forEach((item, i) => {
+                item.dataset.index = i;
+                const num = item.querySelector('.doc-number');
+                const label = item.querySelector('.page-label');
+                if (num) num.textContent = i + 1;
+                if (label) label.textContent = `File ${i + 1}`;
+                const upBtn = item.querySelector('.move-up-btn');
+                const downBtn = item.querySelector('.move-down-btn');
+                if (upBtn) upBtn.disabled = (i === 0);
+                if (downBtn) downBtn.disabled = (i === items.length - 1);
+            });
+        }
+
+        async function renderCanvas(fileData) {
+            const canvas = document.createElement('canvas');
+            if (!fileData.pageProxy) return canvas;
+            const viewport = fileData.pageProxy.getViewport({ scale: 0.5, rotation: fileData.rotation });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            await fileData.pageProxy.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+            return canvas;
+        }
+
+        function buildItem(fileData, index) {
+            const item = document.createElement('div');
+            item.className = 'page-thumbnail-item entering';
+            item.setAttribute('draggable', true);
+            item.dataset.index = index;
+            item.style.animationDelay = `${index * 50}ms`;
+            item.innerHTML = `
+                <div class="thumb-head">
+                    <span class="doc-number">${index + 1}</span>
+                    <span class="file-name" title="${fileData.file.name}">${fileData.file.name}</span>
+                </div>
+                <div class="thumb-canvas-wrap"><canvas></canvas></div>
+                <div class="thumb-foot">
+                    <span class="page-label">File ${index + 1}</span>
+                    <div class="thumb-actions">
+                        <button class="control-btn move-btn move-up-btn" title="Pindah ke Atas"><i class="fas fa-arrow-up"></i></button>
+                        <button class="control-btn move-btn move-down-btn" title="Pindah ke Bawah"><i class="fas fa-arrow-down"></i></button>
+                        <button class="control-btn rotate-btn" title="Putar 90 Derajat"><i class="fas fa-redo-alt"></i></button>
+                        <button class="control-btn delete-btn" title="Hapus File"><i class="fas fa-trash-alt"></i></button>
+                    </div>
+                </div>
+            `;
+            return item;
+        }
+
+        async function renderThumbnails() {
+            thumbnailsContainer.innerHTML = '';
+            showError('');
+
+            if (selectedFiles.length === 0) {
+                resetTool(true);
+                return;
+            }
+
+            updateFileInfo();
+            updateMergeButton();
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const fileData = selectedFiles[i];
+                const item = buildItem(fileData, i);
+                const canvas = await renderCanvas(fileData);
+                item.querySelector('canvas').replaceWith(canvas);
+                thumbnailsContainer.appendChild(item);
+            }
+
+            // Kartu "Tambah File" di akhir grid
+            const addBox = document.createElement('div');
+            addBox.className = 'add-more-box';
+            addBox.innerHTML = `<i class="fas fa-plus"></i><span>Tambah File</span>`;
+            addBox.addEventListener('click', () => fileInput.click());
+            thumbnailsContainer.appendChild(addBox);
+
+            updateLabels();
+        }
+
+        async function reRenderSingle(index, itemElement) {
+            const canvas = await renderCanvas(selectedFiles[index]);
+            const old = itemElement.querySelector('canvas');
+            if (old) old.replaceWith(canvas);
+        }
+
+        function movePage(fromIndex, toIndex) {
+            if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+            if (fromIndex >= selectedFiles.length || toIndex >= selectedFiles.length) return;
+
+            const moved = selectedFiles.splice(fromIndex, 1)[0];
+            selectedFiles.splice(toIndex, 0, moved);
+
+            const items = Array.from(thumbnailsContainer.querySelectorAll('.page-thumbnail-item'));
+            const dragEl = items[fromIndex];
+            if (!dragEl) return;
+            const addBox = thumbnailsContainer.querySelector('.add-more-box');
+
+            if (fromIndex < toIndex) {
+                const refNode = items[toIndex + 1] || addBox;
+                thumbnailsContainer.insertBefore(dragEl, refNode);
+            } else {
+                thumbnailsContainer.insertBefore(dragEl, items[toIndex]);
+            }
+
+            updateLabels();
+            showFeedback(`File dipindahkan ke posisi ${toIndex + 1}.`, true);
+        }
+
+        function deleteFile(index) {
+            selectedFiles.splice(index, 1);
+            const items = thumbnailsContainer.querySelectorAll('.page-thumbnail-item');
+            if (items[index]) thumbnailsContainer.removeChild(items[index]);
+
+            if (selectedFiles.length === 0) {
+                resetTool(true);
+                showToast('File dihapus.');
+                return;
+            }
+            updateLabels();
+            updateFileInfo();
+            updateMergeButton();
+            showToast('File dihapus.');
+        }
+
+        async function rotateFile(index, itemElement) {
+            selectedFiles[index].rotation = (selectedFiles[index].rotation + 90) % 360;
+
+            const rotateBtn = itemElement.querySelector('.rotate-btn');
+            if (rotateBtn) {
+                rotateBtn.classList.remove('spinning');
+                void rotateBtn.offsetWidth;
+                rotateBtn.classList.add('spinning');
+            }
+
+            await reRenderSingle(index, itemElement);
+            showFeedback(`File ${index + 1} diputar ${selectedFiles[index].rotation}°.`, true);
+        }
+
+        // --- Drag and Drop Handlers (Desktop) ---
+        function handleDragStart(e) {
+            dragSrcEl = e.target.closest('.page-thumbnail-item');
+            if (!dragSrcEl) return;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', dragSrcEl.dataset.index);
+            dragSrcEl.classList.add('is-dragging');
+        }
+        function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+        function handleDrop(e) {
+            e.stopPropagation();
+            const targetEl = e.target.closest('.page-thumbnail-item');
+            if (dragSrcEl && targetEl && dragSrcEl !== targetEl) {
+                const items = Array.from(thumbnailsContainer.querySelectorAll('.page-thumbnail-item'));
+                const srcIndex = items.indexOf(dragSrcEl);
+                const targetIndex = items.indexOf(targetEl);
+                if (srcIndex !== -1 && targetIndex !== -1) movePage(srcIndex, targetIndex);
+            }
+            if (dragSrcEl) dragSrcEl.classList.remove('is-dragging');
+        }
+        function handleDragEnd() {
+            if (dragSrcEl) { dragSrcEl.classList.remove('is-dragging'); dragSrcEl = null; }
+        }
+
+        // --- Touch Drag Handlers (Mobile) ---
+        function handleTouchStart(e) {
+            const item = e.target.closest('.page-thumbnail-item');
+            if (!item) return;
+            touchDragItem = item;
+            touchStartTarget = e.target;
+            const touch = e.touches[0];
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+            touchHasMoved = false;
+            touchDropTarget = null;
+        }
+        function handleTouchMove(e) {
+            if (!touchDragItem) return;
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - touchStartX;
+            const deltaY = touch.clientY - touchStartY;
+            if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+                touchHasMoved = true;
+                e.preventDefault();
+                touchDragItem.classList.add('is-touch-dragging');
+                const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+                const targetItem = targetEl ? targetEl.closest('.page-thumbnail-item') : null;
+                if (touchDropTarget && touchDropTarget !== targetItem) {
+                    touchDropTarget.classList.remove('touch-drop-target');
+                }
+                if (targetItem && targetItem !== touchDragItem) {
+                    targetItem.classList.add('touch-drop-target');
+                    touchDropTarget = targetItem;
+                } else if (!targetItem) {
+                    touchDropTarget = null;
+                }
+            }
+        }
+        function handleTouchEnd(e) {
+            if (!touchDragItem) return;
+            touchDragItem.classList.remove('is-touch-dragging');
+            if (touchDropTarget) touchDropTarget.classList.remove('touch-drop-target');
+
+            if (touchHasMoved && touchDropTarget && touchDropTarget !== touchDragItem) {
+                // Selesai menyeret: pindahkan urutan
+                const items = Array.from(thumbnailsContainer.querySelectorAll('.page-thumbnail-item'));
+                const srcIndex = items.indexOf(touchDragItem);
+                const targetIndex = items.indexOf(touchDropTarget);
+                if (srcIndex !== -1 && targetIndex !== -1) movePage(srcIndex, targetIndex);
+            } else if (!touchHasMoved && touchStartTarget && touchStartTarget.closest('.control-btn')) {
+                // Tap pada tombol kontrol: jalankan langsung tanpa menunggu event click (hilangkan delay ~300ms)
+                e.preventDefault();
+                suppressNextClick = true;
+                runControlAction(touchStartTarget, touchDragItem);
+            }
+
+            touchDragItem = null;
+            touchStartTarget = null;
+            touchStartX = 0; touchStartY = 0;
+            touchHasMoved = false;
+            touchDropTarget = null;
+        }
+
+        function handleTouchCancel() {
+            // Dibatalkan sistem: bersihkan visual & state tanpa menjalankan aksi tombol
+            if (touchDragItem) touchDragItem.classList.remove('is-touch-dragging');
+            if (touchDropTarget) touchDropTarget.classList.remove('touch-drop-target');
+            touchDragItem = null;
+            touchStartTarget = null;
+            touchStartX = 0; touchStartY = 0;
+            touchHasMoved = false;
+            touchDropTarget = null;
+        }
+
+        // --- Merge ---
+        async function mergePDFs() {
+            if (selectedFiles.length < 2) return;
+
+            mergeBtn.disabled = true; resetBtn.disabled = true;
+            showLoading('Menggabungkan dokumen PDF Anda...');
+
+            try {
+                const mergedPdf = await PDFDocument.create();
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const fileData = selectedFiles[i];
+                    setLoadingText(`Memproses file ${i + 1} dari ${selectedFiles.length}...`);
+                    const pdfBytes = await fileData.file.arrayBuffer();
+                    const pdfDoc = await PDFDocument.load(pdfBytes);
+                    const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
+                    copiedPages.forEach(page => {
+                        const existingRotation = page.getRotation().angle;
+                        page.setRotation(degrees(existingRotation + fileData.rotation));
+                        mergedPdf.addPage(page);
+                    });
+                }
+
+                const mergedPdfBytes = await mergedPdf.save();
+                const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+                if (mergedUrl) URL.revokeObjectURL(mergedUrl);
+                mergedUrl = URL.createObjectURL(blob);
+                downloadBtn.href = mergedUrl;
+
+                showSuccessUI();
+                showToast('Berhasil! PDF Anda telah digabungkan.');
+            } catch (error) {
+                showError('Terjadi kesalahan saat menggabungkan PDF. Silakan coba lagi.');
+                showToast('Gagal menggabungkan PDF.');
+                console.error(error);
+            } finally {
+                hideLoading();
+                mergeBtn.disabled = selectedFiles.length < 2;
+                resetBtn.disabled = false;
+            }
+        }
+
+        // --- Utility UI ---
+        function showLoading(message) { setLoadingText(message); loadingBox.style.display = 'flex'; errorEl.textContent = ''; }
+        function setLoadingText(message) { loadingText.textContent = message; }
+        function hideLoading() { loadingBox.style.display = 'none'; }
+        function showError(message) { errorEl.textContent = message; }
+
+        function showFeedback(message, isSuccess = true) {
+            statusEl.textContent = message;
+            statusEl.style.color = isSuccess ? '#047857' : '#dc3545';
+            clearTimeout(statusEl.dataset.timer);
+            statusEl.dataset.timer = setTimeout(() => {
+                statusEl.textContent = '';
+                statusEl.style.color = '#047857';
+            }, 3000);
+        }
+
+        function showToast(text) {
+            toastEl.innerText = text;
+            toastEl.style.visibility = 'visible';
+            toastEl.style.opacity = '1';
+            clearTimeout(toastEl.dataset.timer);
+            toastEl.dataset.timer = setTimeout(() => {
+                toastEl.style.opacity = '0';
+                setTimeout(() => { toastEl.style.visibility = 'hidden'; }, 300);
+            }, 3000);
+        }
+
+        function showUIForProcessing() {
+            pdfDropArea.classList.add('hidden');
+            fileInfo.classList.remove('hidden');
+            controls.classList.remove('hidden');
+            mergeBtn.classList.remove('hidden');
+            downloadBtn.classList.add('hidden');
+            restoreBtn.classList.add('hidden');
+            resetBtn.classList.remove('hidden');
+            updateMergeButton();
+        }
+
+        function showSuccessUI() {
+            controls.classList.add('hidden');
+            mergeBtn.classList.add('hidden');
+            downloadBtn.classList.remove('hidden');
+            restoreBtn.classList.remove('hidden');
+            resetBtn.classList.remove('hidden');
+            fileInfo.innerHTML = `<strong>Berhasil digabungkan!</strong><br>${selectedFiles.length} file telah disatukan. Siap untuk diunduh.`;
+            showFeedback('Proses Selesai. Siap untuk Unduh.', true);
+        }
+
+        function resetTool(clearInput = false) {
+            if (mergedUrl) { URL.revokeObjectURL(mergedUrl); mergedUrl = null; }
+            selectedFiles = [];
+            thumbnailsContainer.innerHTML = '';
+            fileInfo.classList.add('hidden');
+            controls.classList.add('hidden');
+            mergeBtn.classList.add('hidden');
+            mergeBtn.disabled = true;
+            downloadBtn.classList.add('hidden');
+            downloadBtn.removeAttribute('href');
+            restoreBtn.classList.add('hidden');
+            resetBtn.classList.add('hidden');
+            pdfDropArea.classList.remove('hidden');
+            hideLoading();
+            showError('');
+            if (clearInput) fileInput.value = '';
+        }
+
+        // Inisialisasi UI awal
+        resetTool(true);
+    })();
+    </script>
+</div>
