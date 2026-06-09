@@ -74,6 +74,8 @@
         }
         #pdf-merger-app-container .pdf-drop-area:hover { background-color: #d1fae5; }
         #pdf-merger-app-container .pdf-drop-area.is-dragover { background-color: #d1fae5; border-color: #059669; }
+        /* Sorotan saat menyeret file ke mana saja di area aplikasi (drop berkali-kali) */
+        #pdf-merger-app-container.is-file-dragover { outline: 3px dashed #059669; outline-offset: 4px; background-color: #ecfdf5; border-radius: 16px; }
         #pdf-merger-app-container .pdf-drop-area p { margin: 0; font-size: clamp(15px, 3vw, 17px); color: #047857; font-weight: 600; }
         #pdf-merger-app-container #pdfInput { display: none; }
 
@@ -488,6 +490,37 @@
         pdfDropArea.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; pdfDropArea.classList.add('is-dragover'); });
         pdfDropArea.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); pdfDropArea.classList.remove('is-dragover'); });
         pdfDropArea.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); pdfDropArea.classList.remove('is-dragover'); if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files); });
+
+        // --- Drop file di mana saja dalam area aplikasi (bisa seret/jatuhkan berkali-kali) ---
+        let appDragDepth = 0;
+        // Hanya tangani seretan yang membawa FILE dari luar (bukan reorder thumbnail internal)
+        function isExternalFileDrag(e) {
+            return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+        }
+        container.addEventListener('dragenter', (e) => {
+            if (!isExternalFileDrag(e)) return;
+            e.preventDefault();
+            appDragDepth++;
+            container.classList.add('is-file-dragover');
+        });
+        container.addEventListener('dragover', (e) => {
+            if (!isExternalFileDrag(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        });
+        container.addEventListener('dragleave', (e) => {
+            if (!isExternalFileDrag(e)) return;
+            appDragDepth = Math.max(0, appDragDepth - 1);
+            if (appDragDepth === 0) container.classList.remove('is-file-dragover');
+        });
+        container.addEventListener('drop', (e) => {
+            appDragDepth = 0;
+            container.classList.remove('is-file-dragover');
+            if (!isExternalFileDrag(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+        });
 
         clearAllBtn.addEventListener('click', clearAllFiles);
         mergeBtn.addEventListener('click', mergePDFs);
